@@ -127,46 +127,76 @@ const KV_BINDINGS = [
 
 const createdKV = [];
 
+// wrangler 子进程封装
+const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
+function wrangler(...args) {
+  return execFileSync(npxBin, ["wrangler", ...args], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+// 拉取当前账号下全部 KV 命名空间（title -> id）
+function listKVNamespaces() {
+  try {
+    const out = wrangler("kv", "namespace", "list");
+    const rows = JSON.parse(out);
+    const map = new Map();
+    for (const r of rows) {
+      if (r && r.title && r.id) map.set(r.title, r.id);
+    }
+    return map;
+  } catch (e) {
+    warn(`获取 KV 命名空间列表失败：${String((e && e.stderr) || e.message || e)}`);
+    return new Map();
+  }
+}
+
 if (process.env.SKIP_KV_CREATE === "1") {
   warn("SKIP_KV_CREATE=1，跳过 KV 命名空间创建，直接使用 wrangler.toml 中已有的配置。");
 } else {
+  // 先查已存在的命名空间，优先复用，避免重复创建导致失败
+  const existing = listKVNamespaces();
+  if (existing.size > 0) info(`检测到账号下已有 ${existing.size} 个 KV 命名空间，将优先复用。`);
+
   for (let i = 0; i < kvCount; i++) {
     const cfg = KV_BINDINGS[i];
     const title = `cloudreve-worker-${cfg.binding}`;
+    const desc = `（${cfg.desc}）`;
+
+    // 1) 已存在则直接复用
+    const existedId = existing.get(title);
+    if (existedId) {
+      createdKV.push({ binding: cfg.binding, id: existedId, desc: cfg.desc });
+      ok(`KV 命名空间 ${cfg.binding}${desc}复用已存在实例：${existedId}`);
+      continue;
+    }
+
+    // 2) 不存在才创建
     try {
-      const out = execFileSync(
-        process.platform === "win32" ? "npx.cmd" : "npx",
-        ["wrangler", "kv", "namespace", "create", title],
-        { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
+      const out = wrangler("kv", "namespace", "create", title);
       const idMatch = /id\s*=\s*"([0-9a-fA-F]{32})"/.exec(out);
-      const id = idMatch ? idMatch[1] : "";
+      let id = idMatch ? idMatch[1] : "";
+      if (!id) {
+        // 创建可能已成功但输出格式未匹配上，回查列表
+        const after = listKVNamespaces();
+        id = after.get(title) || "";
+      }
       if (!id) throw new Error(`无法从 wrangler 输出中解析命名空间 ID：\n${out}`);
       createdKV.push({ binding: cfg.binding, id, desc: cfg.desc });
-      ok(`KV 命名空间 ${cfg.binding}（${cfg.desc}）创建成功：${id}`);
+      ok(`KV 命名空间 ${cfg.binding}${desc}创建成功：${id}`);
     } catch (e) {
-      const msg = e && e.stderr ? String(e.stderr) : String(e);
-      if (/already exists|title/.test(msg)) {
-        // 已存在：尝试从 list 中找回 id
-        warn(`KV 命名空间 ${cfg.binding} 已存在，尝试从列表中获取 ID。`);
-        try {
-          const list = execFileSync(
-            process.platform === "win32" ? "npx.cmd" : "npx",
-            ["wrangler", "kv", "namespace", "list"],
-            { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-          );
-          const rows = JSON.parse(list);
-          const hit = rows.find((r) => r.title === title);
-          if (hit) {
-            createdKV.push({ binding: cfg.binding, id: hit.id, desc: cfg.desc });
-            ok(`KV 命名空间 ${cfg.binding} 复用已存在实例：${hit.id}`);
-            continue;
-          }
-        } catch {
-          /* 继续抛出原错误 */
-        }
+      // 3) 创建失败时最后再尝试一次回查（并发/竞态场景）
+      const after = listKVNamespaces();
+      const retryId = after.get(title);
+      if (retryId) {
+        createdKV.push({ binding: cfg.binding, id: retryId, desc: cfg.desc });
+        ok(`KV 命名空间 ${cfg.binding}${desc}创建时报告冲突，已复用：${retryId}`);
+        continue;
       }
-      fail(`创建 KV 命名空间 ${cfg.binding} 失败：${msg}`);
+      const msg = e && e.stderr ? String(e.stderr) : String(e);
+      fail(`创建 KV 命名空间 ${cfg.binding}${desc}失败：${msg}`);
       process.exit(process.exitCode || 1);
     }
   }
@@ -236,9 +266,57 @@ if (neonApiKey && neonProjectId) {
   });
 
   const BRANCH_NAMES = { main: "cloudreve-main", backup: "cloudreve-backup" };
+
+  // 先把已存在的分支拉下来，能复用的直接复用，避免重复创建报错
+  const existingBranches = new Map(); // name -> branch.id
+  try {
+    const listResp = await fetch(
+      `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`,
+      { headers: neonHeaders() },
+    );
+    if (listResp.ok) {
+      const list = await listResp.json();
+      for (const b of list.branches || []) existingBranches.set(b.name, b.id);
+      if (existingBranches.size > 0) {
+        info(`检测到项目下已有 ${existingBranches.size} 个分支，将优先复用：${[...existingBranches.keys()].join("、")}`);
+      }
+    }
+  } catch {
+    /* 拉取失败不阻塞，后面创建时会再报错 */
+  }
+
+  // 取指定分支的连接串（复用场景）
+  async function connectionUriOf(branchId) {
+    const endpoints = await (
+      await fetch(
+        `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches/${branchId}/endpoints`,
+        { headers: neonHeaders() },
+      )
+    ).json();
+    const ep = (endpoints.endpoints || [])[0];
+    if (!ep || !ep.connection_uris || !ep.connection_uris.length) return "";
+    return ep.connection_uris[0].connection_uri;
+  }
+
   for (let i = 0; i < dbCount; i++) {
     const role = dbRoles[i];
     const name = role === "main" ? BRANCH_NAMES.main : role === "backup" ? BRANCH_NAMES.backup : `cloudreve-cache-${i}`;
+
+    // 1) 已存在则直接复用
+    const existedId = existingBranches.get(name);
+    if (existedId) {
+      try {
+        const uri = await connectionUriOf(existedId);
+        if (!uri) throw new Error("无法获取连接串");
+        dbUrls[role] = uri;
+        ok(`Neon 数据库 ${name}（${role}）已存在，复用连接串`);
+        continue;
+      } catch (e) {
+        warn(`复用分支 ${name} 时出错（${String(e.message || e)}），改为尝试创建`);
+      }
+    }
+
+    // 2) 不存在才创建
     try {
       const resp = await fetch(`https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`, {
         method: "POST",
@@ -248,25 +326,9 @@ if (neonApiKey && neonProjectId) {
       const body = await resp.json();
       if (!resp.ok) {
         if (body && body.message && /already exists|conflict/i.test(body.message)) {
-          // 已存在：走列表接口取连接串
-          const listResp = await fetch(
-            `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`,
-            { headers: neonHeaders() },
-          );
-          const list = await listResp.json();
-          const hit = (list.branches || []).find((b) => b.name === name);
-          if (!hit) throw new Error(`分支 ${name} 已存在但无法获取连接串`);
-          const endpoints = await (
-            await fetch(
-              `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches/${hit.id}/endpoints`,
-              { headers: neonHeaders() },
-            )
-          ).json();
-          const ep = (endpoints.endpoints || [])[0];
-          if (!ep || !ep.connection_uris || !ep.connection_uris.length) {
-            throw new Error(`分支 ${name} 没有可用的连接串`);
-          }
-          dbUrls[role] = ep.connection_uris[0].connection_uri;
+          const uri = await connectionUriOf(existingBranches.get(name) || "");
+          if (!uri) throw new Error(`分支 ${name} 已存在但无法获取连接串`);
+          dbUrls[role] = uri;
           ok(`Neon 数据库 ${name}（${role}）已存在，复用连接串`);
           continue;
         }
@@ -290,6 +352,7 @@ if (neonApiKey && neonProjectId) {
       log("  - 项目 ID 在 Neon 项目页面的 Settings 中查看");
       log("  - 或跳过自动创建：手动在 Neon 控制台建库后把连接串写入 .env，再重跑");
       log("");
+      warn("注意：已创建的 KV 命名空间与数据库分支都会自动复用，修复后重跑不会重复创建。");
       process.exit(process.exitCode || 1);
     }
   }
