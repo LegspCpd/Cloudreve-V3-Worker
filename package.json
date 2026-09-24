@@ -7,7 +7,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/deploy.mjs",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "node scripts/db-push.mjs",

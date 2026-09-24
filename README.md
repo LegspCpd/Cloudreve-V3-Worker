@@ -19,32 +19,90 @@
 - **存储双路**：本地存储 = 绑定的 R2 存储桶；同时支持任意 S3 兼容存储（AWS S3 / MinIO / OSS / COS）
 - **数量受控**：KV 与 Neon 库都通过环境变量控制数量，**上限 5 个**，超过自动失败并提示减少一个
 
-## 🚀 快速开始
+## 🚀 一键部署
 
-### 方式一：Cloudflare 面板部署（推荐，全程不用本地环境）
+**在 Cloudflare 面板连仓库，填 3 样东西就完事：构建命令、部署命令、环境变量。**
+部署时自动完成：创建 KV 命名空间 → 创建 Neon 数据库 → 建表 → 种子数据 → 构建前端 → 部署 Worker。之后每次 push 到 main 自动重新部署。
+
+### 操作步骤
 
 1. **Fork** 本仓库
-2. 在仓库 **Settings → Secrets and variables → Actions** 填入：
-   `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`NEON_API_KEY`、`NEON_PROJECT_ID`
-3. **Actions** → **Build Check** → **Run workflow**，勾选 `setup`：自动创建 KV 与 Neon 数据库、建表、种子数据，配置写回 `wrangler.toml`
-4. 打开 [Cloudflare 面板](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Connect repository**，选这个仓库：
-   - Build command：`npm install --legacy-peer-deps && npm run build`
-   - Deploy command：`npx wrangler deploy`
-   - 环境变量：`DATABASE_URL`、`DATABASE_URL_BACKUP`、`RESEND_API_KEY`、`SESSION_SECRET`、`HASHID_SALT`、`SITE_URL`、`MAIL_FROM_ADDRESS`
-5. **Save and Deploy**，之后每次 push 到 main 自动重新部署
 
-📄 详细步骤见 [DEPLOY.md](./DEPLOY.md#方式一cloudflare-面板部署推荐)
+2. 打开 [Cloudflare 面板](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Connect repository**，选你 fork 的仓库
 
-### 方式二：本地命令行
+3. 填写配置：
+
+   | 配置项 | 填写内容 |
+   |---|---|
+   | Project name | `cloudreve-v3`（任意） |
+   | Production branch | `main` |
+   | Framework preset | `None` |
+   | **Build command** | `npm install --legacy-peer-deps` |
+   | **Deploy command** | `npm run deploy` |
+   | Root directory | 留空 |
+
+4. 展开底部的 **Environment variables**，逐个添加（敏感的选 **Encrypt**）：
+
+   | 变量 | 必填 | 说明 |
+   |---|---|---|
+   | `NEON_API_KEY` | ✅ | [Neon 控制台](https://console.neon.tech/app/settings/api-keys) 生成，用于自动建库 |
+   | `NEON_PROJECT_ID` | ✅ | Neon 项目 Settings 中查看 |
+   | `RESEND_API_KEY` | ✅ | [Resend](https://resend.com/api-keys)，邮件发送 |
+   | `SESSION_SECRET` | ✅ | 会话签名，32 位随机串 |
+   | `HASHID_SALT` | ✅ | ID 混淆盐值，**设定后不可改** |
+   | `MAIL_FROM_ADDRESS` | ✅ | 发件地址 |
+   | `SITE_URL` | ✅ | 站点地址，如 `https://cloudreve-v3.xxx.workers.dev` |
+   | `ADMIN_EMAIL` | 可选 | 管理员邮箱，默认 `admin@cloudreve.org` |
+   | `ADMIN_PASSWORD` | 可选 | 管理员密码，不填自动生成 |
+   | `NODE_OPTIONS` | ✅ | `--openssl-legacy-provider`（旧版 CRA 必需） |
+
+5. 点 **Save and Deploy**，等 3~5 分钟
+
+6. 创建 R2 存储桶（「本地存储」策略用）：面板 → **R2 Object Storage** → **Create bucket** → 名称填 `cloudreve-storage`
+
+7. 完成。管理员账号密码在部署日志的 `db:seed` 步骤里
+
+> 随机串可用在线工具生成，或任意能跑 node 的地方执行：
+> `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+### 一键部署做了什么
+
+```
+npm run deploy
+  ├─ 1. 创建/复用 5 个 KV 命名空间（Cloudreve-v3-cache/session/upload/task/lock）
+  ├─ 2. 创建/复用 5 个 Neon 数据库（1 主库 + 3 缓存库 + 1 备份库）
+  ├─ 3. 全库建表
+  ├─ 4. 种子数据（系统设置 / 用户组 / 存储策略 / 管理员账号）
+  ├─ 5. 连接串回填 wrangler.toml
+  ├─ 6. 构建前端
+  ├─ 7. 写入 Worker secret
+  └─ 8. wrangler deploy 部署
+```
+
+全部步骤**可断点续跑**：已创建的 KV 与数据库会自动复用，不会重复创建，失败后重跑无副作用。
+
+> GitHub Actions 只做构建检查（类型检查 + 前端构建 + wrangler 配置校验），不部署、不建任何资源。
+
+### 数量上限
+
+KV 与 Neon 库都通过环境变量控制数量，**上限 5 个**，超过自动失败并提示「请减少一个」：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `MAX_KV_NAMESPACES` | `5` | KV 命名空间数量 |
+| `MAX_NEON_DATABASES` | `5` | Neon 库数量（1 主库 + 缓存库 + 1 备份库） |
+
+### 本地部署（可选）
 
 ```bash
 npm install
 cd frontend && npm install --legacy-peer-deps && cd ..
-npm run setup        # 自动创建 KV + Neon 库 + 表结构 + 种子数据（可断点续跑）
-npm run build        # 构建前端
-npm run secrets:apply
-npm run deploy       # 部署到 Cloudflare
+NEON_API_KEY=... NEON_PROJECT_ID=... npm run deploy
 ```
+
+`npm run deploy` 一条命令完成上面全部 8 步；`npm run dev` 可本地调试。
+
+📄 更多细节与常见问题见 [DEPLOY.md](./DEPLOY.md)
 
 ## 📁 项目结构
 
