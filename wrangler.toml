@@ -1,0 +1,52 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "cloudreve-v3-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# 前端静态资源（原版 React 构建产物）。Worker 优先处理静态文件，
+# 未命中的请求（/api/... 及前端路由）交给 Worker 处理；前端路由回退到 index.html。
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+# ───────────────────────────────────────────────────────────
+# 运行时变量（非敏感的默认值；敏感信息请用 wrangler secret put 设置）
+# ───────────────────────────────────────────────────────────
+[vars]
+ENVIRONMENT = "production"
+# 数据库连接串与上限：由 scripts/setup.mjs 自动写入 .dev.vars / secret，请勿在此填写
+MAX_KV_NAMESPACES = "5"
+MAX_NEON_DATABASES = "5"
+DATABASE_URL = ""
+DATABASE_URL_BACKUP = ""
+DATABASE_URL_CACHE_1 = ""
+DATABASE_URL_CACHE_2 = ""
+DATABASE_URL_CACHE_3 = ""
+# Resend 邮件（secret：wrangler secret put RESEND_API_KEY）
+RESEND_API_KEY = ""
+MAIL_FROM_ADDRESS = "no-reply@example.com"
+MAIL_FROM_NAME = "CloudrevePlus"
+# 会话签名密钥与 HashID 盐值（secret）
+SESSION_SECRET = ""
+HASHID_SALT = ""
+# 站点对外地址（末尾不要带斜杠）
+SITE_URL = "https://your-worker.example.workers.dev"
+
+# ───────────────────────────────────────────────────────────
+# R2：作为「本地存储」策略的实际存储桶（单桶即可）
+# ───────────────────────────────────────────────────────────
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "cloudreve-storage"
+
+# 观测
+[observability]
+enabled = true
+
+# 本地开发覆盖
+[env.dev]
+name = "cloudreve-v3-worker-dev"
+[env.dev.vars]
+ENVIRONMENT = "dev"
+SITE_URL = "http://localhost:8787"

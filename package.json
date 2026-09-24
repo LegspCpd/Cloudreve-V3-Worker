@@ -1,0 +1,40 @@
+{
+  "name": "cloudreve-v3-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudreve Plus full-stack reimplementation running entirely on a single Cloudflare Worker (Hono + Neon + KV + R2).",
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "node scripts/db-push.mjs",
+    "db:seed": "node scripts/db-seed.mjs",
+    "db:reset": "node scripts/db-push.mjs --reset && node scripts/db-seed.mjs",
+    "frontend:install": "cd frontend && npm install --legacy-peer-deps",
+    "frontend:build": "cd frontend && npm run build && rimraf ../public && cpy \"build/*\" ../public",
+    "build": "npm run frontend:build",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.38.3",
+    "hashids": "^2.3.0",
+    "hono": "^4.6.14",
+    "resend": "^4.1.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "^22.10.2",
+    "cpy-cli": "^5.0.0",
+    "drizzle-kit": "^0.30.1",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
