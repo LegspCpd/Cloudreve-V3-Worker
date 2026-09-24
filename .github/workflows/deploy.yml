@@ -62,12 +62,19 @@ jobs:
 
       - name: Apply worker name / site URL overrides
         if: ${{ github.event.inputs.worker_name != '' || github.event.inputs.site_url != '' }}
+        env:
+          WORKER_NAME: ${{ github.event.inputs.worker_name }}
+          SITE_URL: ${{ github.event.inputs.site_url }}
         run: |
-          if [ -n "${{ github.event.inputs.worker_name }}" ]; then
-            sed -i "s|^name = .*|name = \"${{ github.event.inputs.worker_name }}\"|" wrangler.toml
+          # 去掉面板输入可能带的空白、引号、反引号
+          WORKER_NAME=$(printf '%s' "$WORKER_NAME" | sed -E "s/^[[:space:]\"'\`]+|[[:space:]\"'\`]+$//g")
+          SITE_URL=$(printf '%s' "$SITE_URL" | sed -E "s/^[[:space:]\"'\`]+|[[:space:]\"'\`]+$//g")
+          SITE_URL="${SITE_URL%/}"
+          if [ -n "$WORKER_NAME" ]; then
+            sed -i "s|^name = .*|name = \"$WORKER_NAME\"|" wrangler.toml
           fi
-          if [ -n "${{ github.event.inputs.site_url }}" ]; then
-            sed -i "s|^SITE_URL = .*|SITE_URL = \"${{ github.event.inputs.site_url }}\"|" wrangler.toml
+          if [ -n "$SITE_URL" ]; then
+            sed -i "s|^SITE_URL = .*|SITE_URL = \"$SITE_URL\"|" wrangler.toml
           fi
           echo "--- 应用后的配置 ---"
           grep -E "^(name|SITE_URL) = " wrangler.toml
@@ -80,15 +87,24 @@ jobs:
       # ── 手动数据库模式：把 secrets 写成 .env 供建表使用 ──
       - name: Write .env from secrets (manual database mode)
         if: ${{ github.event.inputs.setup != 'true' }}
+        env:
+          D1: ${{ secrets.DATABASE_URL }}
+          D2: ${{ secrets.DATABASE_URL_BACKUP }}
+          C1: ${{ secrets.DATABASE_URL_CACHE_1 }}
+          C2: ${{ secrets.DATABASE_URL_CACHE_2 }}
+          C3: ${{ secrets.DATABASE_URL_CACHE_3 }}
         run: |
+          # 去掉面板粘贴可能带的空白与首尾引号
+          clean() { printf '%s' "$1" | sed -E "s/^[[:space:]]+|[[:space:]]+$//g; s/^[\"']+|[\"']+$//g"; }
           {
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}"
-            echo "DATABASE_URL_BACKUP=${{ secrets.DATABASE_URL_BACKUP }}"
-            echo "DATABASE_URL_CACHE_1=${{ secrets.DATABASE_URL_CACHE_1 }}"
-            echo "DATABASE_URL_CACHE_2=${{ secrets.DATABASE_URL_CACHE_2 }}"
-            echo "DATABASE_URL_CACHE_3=${{ secrets.DATABASE_URL_CACHE_3 }}"
+            echo "DATABASE_URL=$(clean "$D1")"
+            echo "DATABASE_URL_BACKUP=$(clean "$D2")"
+            echo "DATABASE_URL_CACHE_1=$(clean "$C1")"
+            echo "DATABASE_URL_CACHE_2=$(clean "$C2")"
+            echo "DATABASE_URL_CACHE_3=$(clean "$C3")"
           } > .env
           echo ".env 已生成（仅用于本次构建，不会提交）"
+          grep -c '=' .env
 
       - name: Initialize database schema and seed data
         if: ${{ github.event.inputs.setup != 'true' }}

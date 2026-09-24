@@ -219,8 +219,22 @@ for (let i = 1; i <= 3; i++) {
 const dbUrls = {}; // role -> connection string
 const secretsToSet = []; // 待设置的 Worker secret
 
+// GitHub 面板粘贴的 secret 经常带前后空白或换行，统一清理
+const trimS = (v) => (typeof v === "string" ? v.trim().replace(/^["'`]|["'`]$/g, "").trim() : v);
+neonApiKey = trimS(neonApiKey);
+neonProjectId = trimS(neonProjectId);
+
 if (neonApiKey && neonProjectId) {
   info(`使用 Neon API 自动创建 ${dbCount} 个数据库（项目 ${neonProjectId}）…`);
+
+  // 新版 Neon API 要求 Authorization: Bearer，同时保留 Neon-Api-Key 以兼容旧版
+  const neonHeaders = () => ({
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    Authorization: `Bearer ${neonApiKey}`,
+    "Neon-Api-Key": neonApiKey,
+  });
+
   const BRANCH_NAMES = { main: "cloudreve-main", backup: "cloudreve-backup" };
   for (let i = 0; i < dbCount; i++) {
     const role = dbRoles[i];
@@ -228,11 +242,7 @@ if (neonApiKey && neonProjectId) {
     try {
       const resp = await fetch(`https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Neon-Api-Key": neonApiKey,
-          Accept: "application/json",
-        },
+        headers: neonHeaders(),
         body: JSON.stringify({ branch: { name } }),
       });
       const body = await resp.json();
@@ -241,7 +251,7 @@ if (neonApiKey && neonProjectId) {
           // 已存在：走列表接口取连接串
           const listResp = await fetch(
             `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`,
-            { headers: { "Neon-Api-Key": neonApiKey, Accept: "application/json" } },
+            { headers: neonHeaders() },
           );
           const list = await listResp.json();
           const hit = (list.branches || []).find((b) => b.name === name);
@@ -249,7 +259,7 @@ if (neonApiKey && neonProjectId) {
           const endpoints = await (
             await fetch(
               `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches/${hit.id}/endpoints`,
-              { headers: { "Neon-Api-Key": neonApiKey, Accept: "application/json" } },
+              { headers: neonHeaders() },
             )
           ).json();
           const ep = (endpoints.endpoints || [])[0];
@@ -268,7 +278,18 @@ if (neonApiKey && neonProjectId) {
       ok(`Neon 数据库 ${name}（${role}）创建成功`);
     } catch (e) {
       fail(`创建 Neon 数据库 ${name} 失败：${String(e.message || e)}`);
-      warn(`你也可以跳过自动创建，手动在 Neon 控制台创建库后把连接串写入 .env，再重跑本脚本。`);
+      log("");
+      warn("常见原因：");
+      log("  1. NEON_API_KEY 已过期或权限不足（需要项目的读写权限）");
+      log("  2. NEON_API_KEY / NEON_PROJECT_ID 填错或带了多余空白/引号");
+      log("  3. NEON_PROJECT_ID 不属于该 API Key 所属账号");
+      log("  4. 免费账号的分支数量已达上限");
+      log("");
+      warn("解决方法：");
+      log("  - 到 https://console.neon.tech/app/settings/api-keys 重新生成 API Key");
+      log("  - 项目 ID 在 Neon 项目页面的 Settings 中查看");
+      log("  - 或跳过自动创建：手动在 Neon 控制台建库后把连接串写入 .env，再重跑");
+      log("");
       process.exit(process.exitCode || 1);
     }
   }
