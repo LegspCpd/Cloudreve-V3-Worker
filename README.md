@@ -21,29 +21,25 @@
 
 ## 🚀 快速开始
 
+### 方式一：Fork + 一键部署（推荐，全程不用本地环境）
+
+1. **Fork** 本仓库
+2. 在仓库 **Settings → Secrets and variables → Actions** 填入变量：
+   `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`RESEND_API_KEY`、`SESSION_SECRET`、`HASHID_SALT`、`NEON_API_KEY`、`NEON_PROJECT_ID`
+3. 进入 **Actions** 标签页 → **Deploy to Cloudflare Workers** → **Run workflow**，勾选 `setup` 与 `apply_secrets`
+4. 等 3~5 分钟，在日志里拿到管理员账号，打开 Worker 地址即可使用
+
+📄 详细步骤见 [DEPLOY.md](./DEPLOY.md#方式一fork--一键部署推荐全程不用本地环境)
+
+### 方式二：本地命令行
+
 ```bash
-# 1. 安装依赖
 npm install
-
-# 2. 一键初始化（自动创建 KV + Neon 库 + 表结构 + 种子数据）
-npm run setup
-
-# 3. 构建前端 + 后端
-npm run build
-
-# 4. 填环境变量（详见下方）
-echo "postgres://..." | npx wrangler secret put DATABASE_URL
-echo "postgres://..." | npx wrangler secret put DATABASE_URL_BACKUP
-echo "re_xxxxxxxx"     | npx wrangler secret put RESEND_API_KEY
-echo "随机32位字符串"   | npx wrangler secret put SESSION_SECRET
-echo "随机盐值"         | npx wrangler secret put HASHID_SALT
-
-# 5. 创建 R2 存储桶并部署
-npx wrangler r2 bucket create cloudreve-storage
-npm run deploy
+npm run setup        # 自动创建 KV + Neon 库 + 表结构 + 种子数据
+npm run build        # 构建前端 + 后端
+npm run secrets:apply
+npm run deploy       # 部署到 Cloudflare
 ```
-
-📄 **完整教程见 [DEPLOY.md](./DEPLOY.md)**，包含每一步的说明与常见问题。
 
 ## 📁 项目结构
 

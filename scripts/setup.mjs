@@ -343,15 +343,24 @@ log("");
 // 第七步：初始化表结构与种子数据
 // ───────────────────────────────────────────────────────────
 
+const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+
+log("");
 log(`${colors.cyan}──────────── 初始化表结构（所有配置的数据库）────────────${colors.reset}`);
 try {
-  execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["npm", "run", "db:push"], {
-    cwd: ROOT,
-    stdio: "inherit",
-  });
+  execFileSync(npmBin, ["run", "db:push"], { cwd: ROOT, stdio: "inherit" });
   ok("表结构初始化完成");
 } catch {
   fail("表结构初始化失败，请手动执行 `npm run db:push`");
+}
+
+log("");
+log(`${colors.cyan}──────────── 写入种子数据（系统设置 / 用户组 / 管理员账号）────────────${colors.reset}`);
+try {
+  execFileSync(npmBin, ["run", "db:seed"], { cwd: ROOT, stdio: "inherit" });
+  ok("种子数据写入完成");
+} catch {
+  fail("种子数据写入失败，请手动执行 `npm run db:seed`");
 }
 
 log("");

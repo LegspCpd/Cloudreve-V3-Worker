@@ -13,6 +13,7 @@
     "db:push": "node scripts/db-push.mjs",
     "db:seed": "node scripts/db-seed.mjs",
     "db:reset": "node scripts/db-push.mjs --reset && node scripts/db-seed.mjs",
+    "secrets:apply": "node scripts/apply-secrets.mjs",
     "frontend:install": "cd frontend && npm install --legacy-peer-deps",
     "frontend:build": "cd frontend && npm run build && rimraf ../public && cpy \"build/*\" ../public",
     "build": "npm run frontend:build",
