@@ -21,22 +21,27 @@
 
 ## 🚀 快速开始
 
-### 方式一：Fork + 一键部署（推荐，全程不用本地环境）
+### 方式一：Cloudflare 面板部署（推荐，全程不用本地环境）
 
 1. **Fork** 本仓库
-2. 在仓库 **Settings → Secrets and variables → Actions** 填入变量：
-   `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`RESEND_API_KEY`、`SESSION_SECRET`、`HASHID_SALT`、`NEON_API_KEY`、`NEON_PROJECT_ID`
-3. 进入 **Actions** 标签页 → **Deploy to Cloudflare Workers** → **Run workflow**，勾选 `setup` 与 `apply_secrets`
-4. 等 3~5 分钟，在日志里拿到管理员账号，打开 Worker 地址即可使用
+2. 在仓库 **Settings → Secrets and variables → Actions** 填入：
+   `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`NEON_API_KEY`、`NEON_PROJECT_ID`
+3. **Actions** → **Build Check** → **Run workflow**，勾选 `setup`：自动创建 KV 与 Neon 数据库、建表、种子数据，配置写回 `wrangler.toml`
+4. 打开 [Cloudflare 面板](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Connect repository**，选这个仓库：
+   - Build command：`npm install --legacy-peer-deps && npm run build`
+   - Deploy command：`npx wrangler deploy`
+   - 环境变量：`DATABASE_URL`、`DATABASE_URL_BACKUP`、`RESEND_API_KEY`、`SESSION_SECRET`、`HASHID_SALT`、`SITE_URL`、`MAIL_FROM_ADDRESS`
+5. **Save and Deploy**，之后每次 push 到 main 自动重新部署
 
-📄 详细步骤见 [DEPLOY.md](./DEPLOY.md#方式一fork--一键部署推荐全程不用本地环境)
+📄 详细步骤见 [DEPLOY.md](./DEPLOY.md#方式一cloudflare-面板部署推荐)
 
 ### 方式二：本地命令行
 
 ```bash
 npm install
-npm run setup        # 自动创建 KV + Neon 库 + 表结构 + 种子数据
-npm run build        # 构建前端 + 后端
+cd frontend && npm install --legacy-peer-deps && cd ..
+npm run setup        # 自动创建 KV + Neon 库 + 表结构 + 种子数据（可断点续跑）
+npm run build        # 构建前端
 npm run secrets:apply
 npm run deploy       # 部署到 Cloudflare
 ```

@@ -2,165 +2,134 @@
 
 把 Cloudreve Plus（原版 Go/Gin 后端 + React 前端）完整重写为**单个 Cloudflare Worker**。
 
-**Fork 之后不需要装任何本地环境**：在 GitHub 面板填好变量，点一下 Run workflow 就完成构建 + 部署。
+**部署方式：在 Cloudflare 面板的 Workers & Pages 里连接 GitHub 仓库，填构建命令、部署命令和环境变量，面板自动构建部署。GitHub Actions 只负责构建检查，不负责部署。**
 
 ---
 
-## 方式一：Fork + 一键部署（推荐，全程不用本地环境）
+## 方式一：Cloudflare 面板部署（推荐）
 
-### 第 1 步：Fork 仓库
+全程在浏览器里完成，不用本地环境。
 
-在 [Cloudreve-V3-Worker](https://github.com/LegspCpd/Cloudreve-V3-Worker) 页面点右上角 **Fork**，fork 到你自己的账号下。
+### 第 1 步：初始化资源（只做一次）
 
-### 第 2 步：获取 Cloudflare API Token 与账号 ID
+有两种方式创建 KV 命名空间和 Neon 数据库，选一种：
 
-1. 打开 https://dash.cloudflare.com/profile/api-tokens
-2. 点 **Create Token** → 选择模板 **Edit Cloudflare Workers**
-3. 复制生成的 Token（只显示一次）
-4. 账号 ID：打开 https://dash.cloudflare.com → 右侧栏 **Account ID**，复制
+**A. 用 GitHub Actions 自动创建（推荐）**
 
-### 第 3 步：在 GitHub 面板填写变量
+1. Fork [Cloudreve-V3-Worker](https://github.com/LegspCpd/Cloudreve-V3-Worker) 到你的账号
+2. 在 fork 的仓库 **Settings → Secrets and variables → Actions → New repository secret** 添加：
 
-进入你 fork 的仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**，逐个添加：
+   | Secret | 说明 |
+   |---|---|
+   | `CLOUDFLARE_API_TOKEN` | [创建 Token](https://dash.cloudflare.com/profile/api-tokens)，选 **Edit Cloudflare Workers** 模板 |
+   | `CLOUDFLARE_ACCOUNT_ID` | [面板首页](https://dash.cloudflare.com) 右侧 Account ID |
+   | `NEON_API_KEY` | [Neon 控制台](https://console.neon.tech/app/settings/api-keys) 生成 |
+   | `NEON_PROJECT_ID` | Neon 项目页面 Settings 中查看 |
 
-**必填（部署与邮件）：**
+3. 进 **Actions** 标签页 → 若提示禁用就点 *I understand my workflows, go ahead and enable* → 选 **Build Check** → **Run workflow**，勾选 `setup`
+4. 等运行完成，KV 与 Neon 数据库配置会自动写回仓库的 `wrangler.toml` 并提交
 
-| Secret 名称 | 值 | 说明 |
-|---|---|---|
-| `CLOUDFLARE_API_TOKEN` | 上一步生成的 Token | 部署与建库用 |
-| `CLOUDFLARE_ACCOUNT_ID` | 你的 Account ID | 部署用 |
-| `RESEND_API_KEY` | `re_xxxxxxxx` | [Resend](https://resend.com/api-keys) 申请 |
-| `SESSION_SECRET` | 32 位以上随机串 | 会话签名 |
-| `HASHID_SALT` | 32 位以上随机串 | ID 混淆盐值，**设定后不可改** |
+> 自动创建的 KV 命名空间标题统一为 `Cloudreve-v3-cache` / `Cloudreve-v3-session` / `Cloudreve-v3-upload` / `Cloudreve-v3-task` / `Cloudreve-v3-lock`。
+> 数量受 `MAX_KV_NAMESPACES` 与 `MAX_NEON_DATABASES` 控制，**上限 5 个**，超过会自动失败并提示减少一个。
+> 已创建的资源重跑会自动复用，不会重复创建。
 
-**二选一（数据库）：**
+**B. 手动创建**
 
-- **A. 自动创建（推荐）**：填下面两个，工作流会自动创建 Neon 库
-  - `NEON_API_KEY` — [Neon 控制台](https://console.neon.tech/app/settings/api-keys) 生成
-  - `NEON_PROJECT_ID` — Neon 项目页面获取
-- **B. 手动指定**：在 [Neon](https://console.neon.tech) 自建库后填连接串
-  - `DATABASE_URL` — 主库
-  - `DATABASE_URL_BACKUP` — 备份库
-  - `DATABASE_URL_CACHE_1` ~ `DATABASE_URL_CACHE_3` — 缓存库（可选）
+- KV：[Cloudflare 面板](https://dash.cloudflare.com) → Workers & Pages → KV，创建上述 5 个标题的命名空间，把 ID 填进 `wrangler.toml`
+- Neon：在 [Neon 控制台](https://console.neon.tech) 创建库，连接串填进 `wrangler.toml` 的 `[vars]` 或 Worker 环境变量
 
-**可选（管理员账号）：**
+### 第 2 步：在 Cloudflare 面板连接仓库
 
-| Secret 名称 | 说明 |
-|---|---|
-| `ADMIN_EMAIL` | 管理员邮箱，默认 `admin@cloudreve.org` |
-| `ADMIN_PASSWORD` | 管理员密码，不填则自动生成并打印在日志里 |
+1. 打开 [Cloudflare 面板](https://dash.cloudflare.com) → **Workers & Pages** → **Create**
+2. 选 **Connect repository**（连接 GitHub 仓库）
+3. 授权并选择你 fork 的 `Cloudreve-V3-Worker` 仓库
+4. 填写配置：
 
-生成随机字符串（可在任意在线工具生成，或 Cloudflare 面板的 Workers 命令行里执行）：
+   | 配置项 | 填写内容 |
+   |---|---|
+   | **Project name** | `cloudreve-v3`（或任意名） |
+   | **Production branch** | `main` |
+   | **Framework preset** | `None`（或 Other） |
+   | **Build command** | `npm install --legacy-peer-deps && npm run build` |
+   | **Deploy command** | `npx wrangler deploy` |
+   | **Root directory** | 留空（默认仓库根） |
+
+5. 展开底部的 **Environment variables**，逐个添加：
+
+   | 变量 | 必填 | 说明 |
+   |---|---|---|
+   | `DATABASE_URL` | ✅ | Neon 主库连接串（初始化时自动生成，从 `wrangler.toml` 或日志复制） |
+   | `DATABASE_URL_BACKUP` | ✅ | Neon 备份库连接串 |
+   | `DATABASE_URL_CACHE_1` | 可选 | Neon 缓存库 |
+   | `RESEND_API_KEY` | ✅ | [Resend](https://resend.com/api-keys) |
+   | `SESSION_SECRET` | ✅ | 会话签名，32 位以上随机串 |
+   | `HASHID_SALT` | ✅ | ID 混淆盐值，**设定后不可改** |
+   | `SITE_URL` | ✅ | 部署后填实际地址 |
+   | `MAIL_FROM_ADDRESS` | ✅ | 发件地址 |
+   | `MAIL_FROM_NAME` | 可选 | 发件人名称 |
+
+   > 敏感变量（数据库连接串、API Key、密钥）添加时选 **Encrypt**（加密）类型。
+
+6. 点 **Save and Deploy**，面板会自动构建并部署
+
+### 第 3 步：获取数据库连接串
+
+如果第 1 步用的是 Actions 自动创建，连接串在 Actions 运行日志里（`Setup resources` 步骤），格式如下：
 
 ```
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+DATABASE_URL=postgres://...
+DATABASE_URL_BACKUP=postgres://...
 ```
 
-**可选的数量控制**（放在 **Variables** 而不是 Secrets，Settings → Secrets and variables → Actions → **Variables** 标签页）：
+也可以在 [Neon 控制台](https://console.neon.tech) 的对应分支页面直接复制（分支名：`cloudreve-main` / `cloudreve-backup` / `cloudreve-cache-*`）。
 
-| Variable 名称 | 默认 | 说明 |
-|---|---|---|
-| `MAX_KV_NAMESPACES` | `5` | 自动创建的 KV 数量，**上限 5**，超过自动失败 |
-| `MAX_NEON_DATABASES` | `5` | Neon 库数量，**上限 5**（1 主库 + 缓存库 + 1 备份库） |
+### 第 4 步：创建 R2 存储桶
 
-### 第 4 步：运行工作流
+「本地存储」策略需要一个 R2 存储桶：
 
-1. 进入仓库 **Actions** 标签页
-2. 如果提示 workflows 被禁用（fork 的仓库默认如此），点 **I understand my workflows, go ahead and enable**
-3. 左侧选择 **Deploy to Cloudflare Workers**
-4. 点 **Run workflow**，按下表勾选：
+[Cloudflare 面板](https://dash.cloudflare.com) → **R2 Object Storage** → **Create bucket** → 名称填 `cloudreve-storage`
 
-| 选项 | 何时勾选 |
-|---|---|
-| `setup` | **首次部署必选**：自动创建 KV 与 Neon 数据库（要求选了方式 A） |
-| `build_frontend` | 首次部署、或前端代码有更新时勾选 |
-| `apply_secrets` | 首次部署必选；变量已写入过可关掉 |
-| `worker_name` | 自定义 Worker 名称，留空用 `cloudreve-v3-worker` |
-| `site_url` | 部署后填实际地址，如 `https://xxx.workers.dev` |
+> 名称必须与 `wrangler.toml` 中 `[[r2_buckets]]` 的 `bucket_name` 一致。
 
-5. 点绿色 **Run workflow**，等 3~5 分钟
+### 第 5 步：验证
 
-### 第 5 步：查看结果
+部署成功后，面板会给出 Worker 地址（如 `https://cloudreve-v3.<你的子域>.workers.dev`）。
 
-- 工作流日志里会打印**管理员账号与密码**（仅在 `setup` 步骤的输出中，注意保存）
-- Worker 地址在 [Cloudflare 面板](https://dash.cloudflare.com) → Workers & Pages → 你的 Worker
-- 浏览器打开该地址即可使用
+浏览器打开，用初始化时的管理员账号登录（默认 `admin@cloudreve.org`，密码在 Actions 日志或种子数据脚本输出中）。
 
-> 之后每次想更新部署，重复第 4 步即可（`setup` 关掉、`apply_secrets` 关掉、`build_frontend` 按需）。
+之后**每次 push 到 main 分支，面板会自动重新构建部署**，不用再做任何操作。
 
 ---
 
 ## 方式二：本地命令行部署
 
-适合想本地调试或自定义流程的用户。
-
-### 0. 前置条件
-
-- Node.js ≥ 20
-- 已登录 Cloudflare：`npx wrangler login`
-
-### 1. 一键初始化
+适合本地调试。
 
 ```bash
+# 安装依赖
 npm install
+cd frontend && npm install --legacy-peer-deps && cd ..
+
+# 一键初始化（自动创建 KV + Neon 库 + 表结构 + 种子数据，可断点续跑）
 npm run setup
-```
 
-自动完成：创建 KV（上限 5）→ 创建 Neon 库（上限 5，1 主 + 缓存 + 1 备份）→ 建表 → 种子数据。
-
-自动创建 Neon 需要提供 API Key：
-
-**Windows (PowerShell)：**
-```powershell
-$env:NEON_API_KEY="你的Neon API Key"
-$env:NEON_PROJECT_ID="你的Neon Project ID"
-npm run setup
-```
-
-**Linux / macOS：**
-```bash
-NEON_API_KEY="..." NEON_PROJECT_ID="..." npm run setup
-```
-
-已有数据库则写入 `.env` 后再跑一次 `npm run setup`：
-
-```env
-DATABASE_URL=postgres://...
-DATABASE_URL_BACKUP=postgres://...
-DATABASE_URL_CACHE_1=postgres://...
-```
-
-数量控制示例（超过上限会自动失败并提示「请减少一个」）：
-
-```bash
-MAX_KV_NAMESPACES=3 npm run setup
-MAX_NEON_DATABASES=2 npm run setup
-```
-
-### 2. 构建与部署
-
-```bash
+# 构建前端
 npm run build
+
+# 本地调试
+npm run dev
+
+# 部署
 npm run deploy
 ```
 
-首次部署前创建 R2 存储桶（用作「本地存储」策略）：
+首次部署前创建 R2 存储桶：
 
 ```bash
 npx wrangler r2 bucket create cloudreve-storage
 ```
 
-写入 secret：
-
-```bash
-echo "postgres://..." | npx wrangler secret put DATABASE_URL
-echo "postgres://..." | npx wrangler secret put DATABASE_URL_BACKUP
-echo "re_xxxxxxxx"   | npx wrangler secret put RESEND_API_KEY
-echo "随机32位字符串" | npx wrangler secret put SESSION_SECRET
-echo "随机盐值"       | npx wrangler secret put HASHID_SALT
-```
-
-或一行搞定（读取 `.env` 与环境变量）：
+写入 secret（读取 `.env` 与环境变量，自动批量写入）：
 
 ```bash
 npm run secrets:apply
@@ -172,36 +141,20 @@ npm run secrets:apply
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | ✅ | GitHub Actions 部署用 |
-| `CLOUDFLARE_ACCOUNT_ID` | ✅ | GitHub Actions 部署用 |
-| `DATABASE_URL` | ✅ | Neon 主库连接串（**唯一存放数据的库**） |
+| `CLOUDFLARE_API_TOKEN` | Actions 初始化用 | Edit Cloudflare Workers 模板 |
+| `CLOUDFLARE_ACCOUNT_ID` | Actions 初始化用 | 面板首页右侧 |
+| `NEON_API_KEY` | 自动建库用 | Neon 控制台生成 |
+| `NEON_PROJECT_ID` | 自动建库用 | Neon 项目 Settings |
+| `DATABASE_URL` | ✅ | Neon 主库（**唯一存数据的库**） |
 | `DATABASE_URL_BACKUP` | ✅ | Neon 备份库（写入主库时自动同步） |
-| `DATABASE_URL_CACHE_1`…`3` | 可选 | Neon 缓存库（热数据加速） |
+| `DATABASE_URL_CACHE_1`…`3` | 可选 | Neon 缓存库 |
 | `MAX_KV_NAMESPACES` | 可选 | KV 数量上限 **5** |
 | `MAX_NEON_DATABASES` | 可选 | Neon 库数量上限 **5** |
-| `RESEND_API_KEY` | ✅ | Resend 邮件 |
-| `SESSION_SECRET` | ✅ | 会话 Cookie 签名密钥 |
-| `HASHID_SALT` | ✅ | HashID 盐值，**不可更改** |
-| `SITE_URL` | ✅ | 站点对外地址 |
+| `RESEND_API_KEY` | ✅ | 邮件 |
+| `SESSION_SECRET` | ✅ | 会话签名 |
+| `HASHID_SALT` | ✅ | ID 盐值，**不可改** |
+| `SITE_URL` | ✅ | 站点地址 |
 | `MAIL_FROM_ADDRESS` | ✅ | 发件地址 |
-| `MAIL_FROM_NAME` | 可选 | 发件人名称 |
-
----
-
-## 常用命令速查（本地）
-
-```bash
-npm run setup          # 一键初始化（KV + Neon + 表结构 + 种子数据）
-npm run dev            # 本地开发调试
-npm run build          # 构建前端 + 后端
-npm run deploy         # 部署到 Cloudflare
-npm run secrets:apply  # 把 .env / 环境变量写入 Worker secret
-npm run typecheck      # 类型检查
-npm run db:push        # 表结构增量更新
-npm run db:seed        # 种子数据（幂等）
-npm run db:reset       # 清空重建（危险）
-npm run tail           # 实时日志
-```
 
 ---
 
@@ -231,7 +184,21 @@ npm run tail           # 实时日志
   会话：K2    上传会话：K3    任务进度：K4    锁与限流：K5
 ```
 
-**K1 缓存说明**：K1 会尽可能多地把热数据缓存进去——系统设置、用户信息、文件元数据、目录列表等，命中时无需查库。
+---
+
+## 常用命令速查（本地）
+
+```bash
+npm run setup          # 一键初始化（KV + Neon + 表结构 + 种子数据，可断点续跑）
+npm run dev            # 本地调试
+npm run build          # 构建前端
+npm run deploy         # 部署
+npm run secrets:apply  # 批量写入 Worker secret
+npm run typecheck      # 类型检查
+npm run db:push        # 表结构增量更新
+npm run db:seed        # 种子数据（幂等）
+npm run tail           # 实时日志
+```
 
 ---
 
@@ -250,9 +217,9 @@ npm run tail           # 实时日志
 | 分享系统 | ✅ 含密码保护、预览开关、积分下载、转存 |
 | 用户标签 / 快捷方式 | ✅ |
 | WebDAV | ✅ PROPFIND/GET/PUT/MKCOL/DELETE/MOVE/COPY |
-| 增值服务（容量包/订单/兑换码） | ✅ 数据结构完整保留，支付回调收敛到 `/callback/*` |
+| 增值服务（容量包/订单/兑换码） | ✅ 数据结构完整保留 |
 | 离线下载（Aria2） | ✅ 使用**外部 Aria2 节点**：后台「节点管理」配置，本端通过 JSON-RPC 派发任务 |
-| 后台管理 | ✅ 用户/用户组/存储策略/文件/分享/订单/任务/举报/节点/兑换码全量管理 |
+| 后台管理 | ✅ 全量管理 |
 | 缩略图 | 使用存储策略侧生成的缩略图，图片类直接回源 |
 | ffmpeg / 文档转换 | Worker 运行时不可用，需在存储策略侧或外部节点完成 |
 
@@ -260,26 +227,35 @@ npm run tail           # 实时日志
 
 ## 常见问题
 
-**Q: Fork 后 Actions 里看不到工作流 / 无法运行？**
-A: Fork 的仓库默认禁用 Actions。进入 **Actions** 标签页，点提示栏里的 **I understand my workflows, go ahead and enable**。
+**Q: Fork 后 Actions 里看不到工作流？**
+A: Fork 的仓库默认禁用 Actions。进 **Actions** 标签页点提示栏里的 *I understand my workflows, go ahead and enable*。
 
-**Q: 工作流跑完，但访问站点报 50005？**
-A: 配置的 Neon 数据库数量超过上限。减少到 5 个以内（1 主库 + 缓存库 + 1 备份库）后重新运行。
+**Q: Workers Builds 构建失败，提示找不到 wrangler？**
+A: Deploy command 用 `npx wrangler deploy` 会自动安装。若网络慢，可改为先 `npm install` 再部署。
 
-**Q: `setup` 步骤报错「超过上限 5 个，请减少一个」？**
-A: 这是预期行为。把 `MAX_KV_NAMESPACES` / `MAX_NEON_DATABASES` 改小（≤5）后重跑。
+**Q: 前端构建报 OpenSSL 错误？**
+A: 旧版 Create React App 在 Node 17+ 需要 `NODE_OPTIONS=--openssl-legacy-provider`。Workers Builds 的环境变量里加一个 `NODE_OPTIONS` = `--openssl-legacy-provider` 即可。
+
+**Q: 访问站点报 50005？**
+A: Neon 数据库数量超过上限。减少到 5 个以内（1 主库 + 缓存库 + 1 备份库）后重新部署。
+
+**Q: `setup` 报「超过上限 5 个，请减少一个」？**
+A: 预期行为。把 `MAX_KV_NAMESPACES` / `MAX_NEON_DATABASES` 改小（≤5）后重跑。
+
+**Q: 重跑 setup 会重复创建资源吗？**
+A: 不会。KV 与 Neon 分支都是「先查后建」，已存在的自动复用。
 
 **Q: 上传大文件失败？**
-A: Worker 单请求体上限 100MB，分片已自动适配（最大 96MB）。使用外部 S3 时请确认存储桶 CORS 允许浏览器 PUT。
+A: Worker 单请求体上限 100MB，分片已自动适配（最大 96MB）。外部 S3 需确认存储桶 CORS 允许浏览器 PUT。
 
 **Q: 邮件发不出去？**
 A: 检查 `RESEND_API_KEY` 是否设置、`MAIL_FROM_ADDRESS` 的域名是否在 Resend 验证过。
 
 **Q: 想重置管理员密码？**
-A: 设置 `ADMIN_EMAIL` 与 `ADMIN_PASSWORD` 两个 secret，重新跑一次工作流（勾选 `setup`，或不勾 setup 也会自动执行 db:seed，幂等覆盖）。
+A: 设置 `ADMIN_EMAIL` 与 `ADMIN_PASSWORD` 两个 secret，重跑 Actions（勾选 `setup`），或本地 `ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run db:seed`。
 
 **Q: HashID 盐值能改吗？**
-A: 不能。`HASHID_SALT` 一旦设定就不可更改，否则所有历史分享链接、外链全部失效。
+A: 不能。`HASHID_SALT` 一旦设定不可更改，否则历史分享链接、外链全部失效。
 
 **Q: 免费额度够用吗？**
-A: Workers 免费版 10 万请求/天、KV 免费版 10 万读 + 1000 写/天、Neon 免费版 0.5 GB 存储。个人网盘完全够用；流量大时建议 Workers 付费版（$5/月）。
+A: Workers 免费版 10 万请求/天、KV 10 万读 + 1000 写/天、Neon 0.5 GB 存储。个人网盘够用；流量大时建议 Workers 付费版（$5/月）。

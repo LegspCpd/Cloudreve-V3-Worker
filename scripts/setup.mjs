@@ -116,13 +116,13 @@ log("");
 // 第二步：自动创建 Worker KV 命名空间
 // ───────────────────────────────────────────────────────────
 
-/** KV 绑定名与用途 */
+/** KV 绑定名与用途（标题统一使用 Cloudreve-v3- 前缀） */
 const KV_BINDINGS = [
-  { binding: "K1", desc: "热数据全量缓存" },
-  { binding: "K2", desc: "会话" },
-  { binding: "K3", desc: "上传会话" },
-  { binding: "K4", desc: "任务进度" },
-  { binding: "K5", desc: "锁与限流" },
+  { binding: "K1", title: "Cloudreve-v3-cache", desc: "热数据全量缓存" },
+  { binding: "K2", title: "Cloudreve-v3-session", desc: "会话" },
+  { binding: "K3", title: "Cloudreve-v3-upload", desc: "上传会话" },
+  { binding: "K4", title: "Cloudreve-v3-task", desc: "任务进度" },
+  { binding: "K5", title: "Cloudreve-v3-lock", desc: "锁与限流" },
 ];
 
 const createdKV = [];
@@ -138,10 +138,17 @@ function wrangler(...args) {
 }
 
 // 拉取当前账号下全部 KV 命名空间（title -> id）
+// wrangler 输出可能带版本告警等非 JSON 前缀，需要从输出中切出真正的 JSON 数组
 function listKVNamespaces() {
   try {
     const out = wrangler("kv", "namespace", "list");
-    const rows = JSON.parse(out);
+    const start = out.indexOf("[");
+    const end = out.lastIndexOf("]");
+    if (start === -1 || end === -1 || end <= start) {
+      warn("wrangler 未返回命名空间列表（可能账号下暂无命名空间）");
+      return new Map();
+    }
+    const rows = JSON.parse(out.slice(start, end + 1));
     const map = new Map();
     for (const r of rows) {
       if (r && r.title && r.id) map.set(r.title, r.id);
@@ -162,7 +169,7 @@ if (process.env.SKIP_KV_CREATE === "1") {
 
   for (let i = 0; i < kvCount; i++) {
     const cfg = KV_BINDINGS[i];
-    const title = `cloudreve-worker-${cfg.binding}`;
+    const title = cfg.title;
     const desc = `（${cfg.desc}）`;
 
     // 1) 已存在则直接复用
@@ -196,7 +203,7 @@ if (process.env.SKIP_KV_CREATE === "1") {
         continue;
       }
       const msg = e && e.stderr ? String(e.stderr) : String(e);
-      fail(`创建 KV 命名空间 ${cfg.binding}${desc}失败：${msg}`);
+      fail(`创建 KV 命名空间 ${cfg.binding}${desc}失败（标题 ${title}）：${msg}`);
       process.exit(process.exitCode || 1);
     }
   }

@@ -1,44 +1,33 @@
-name: Deploy to Cloudflare Workers
+# 这个工作流只做两件事：
+#   1. 检查代码能否正常构建（每次推送 / PR 自动跑）
+#   2. 提供一键初始化资源的手动入口（创建 KV 与 Neon 数据库、建表、种子数据）
+#
+# 部署不在这里做。部署方式：Cloudflare 面板 → Workers & Pages → Create →
+# Connect repository → 选这个仓库，填 Build command / Deploy command / 环境变量。
+# 详见 DEPLOY.md「方式一」。
 
-# 在 GitHub 仓库面板上：Actions 标签页 → "Deploy to Cloudflare Workers" → Run workflow
-# Fork 后首次运行前，请先到 Settings → Secrets and variables → Actions 填好变量（见 DEPLOY.md）
+name: Build Check
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       setup:
-        description: "首次部署：自动创建 KV 命名空间与 Neon 数据库（需要 NEON_API_KEY / NEON_PROJECT_ID）"
+        description: "初始化资源：自动创建 KV 命名空间与 Neon 数据库（需要 NEON_API_KEY / NEON_PROJECT_ID）"
         type: boolean
         required: false
         default: false
-      build_frontend:
-        description: "构建前端（首次部署与前端有更新时勾选）"
-        type: boolean
-        required: false
-        default: true
-      apply_secrets:
-        description: "把变量写入 Worker secret（首次部署必选；已写入过可关闭）"
-        type: boolean
-        required: false
-        default: true
-      worker_name:
-        description: "Worker 名称（留空使用 cloudreve-v3-worker）"
-        required: false
-        default: ""
-      site_url:
-        description: "站点对外地址，如 https://xxx.workers.dev（留空则不修改）"
-        required: false
-        default: ""
 
-# 需要 contents: write 以便把自动生成的 KV 配置提交回仓库
 permissions:
   contents: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     env:
-      # 旧版 Create React App 在 Node 20+ 上需要此选项
       NODE_OPTIONS: "--openssl-legacy-provider"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -60,79 +49,35 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Apply worker name / site URL overrides
-        if: ${{ github.event.inputs.worker_name != '' || github.event.inputs.site_url != '' }}
-        env:
-          WORKER_NAME: ${{ github.event.inputs.worker_name }}
-          SITE_URL: ${{ github.event.inputs.site_url }}
-        run: |
-          # 去掉面板输入可能带的空白、引号、反引号
-          WORKER_NAME=$(printf '%s' "$WORKER_NAME" | sed -E "s/^[[:space:]\"'\`]+|[[:space:]\"'\`]+$//g")
-          SITE_URL=$(printf '%s' "$SITE_URL" | sed -E "s/^[[:space:]\"'\`]+|[[:space:]\"'\`]+$//g")
-          SITE_URL="${SITE_URL%/}"
-          if [ -n "$WORKER_NAME" ]; then
-            sed -i "s|^name = .*|name = \"$WORKER_NAME\"|" wrangler.toml
-          fi
-          if [ -n "$SITE_URL" ]; then
-            sed -i "s|^SITE_URL = .*|SITE_URL = \"$SITE_URL\"|" wrangler.toml
-          fi
-          echo "--- 应用后的配置 ---"
-          grep -E "^(name|SITE_URL) = " wrangler.toml
-
-      # ── 资源初始化（自动创建 KV + Neon + 表结构 + 种子数据）──
-      - name: Setup resources (auto-create KV and Neon databases)
-        if: ${{ github.event.inputs.setup == 'true' && env.NEON_API_KEY != '' }}
-        run: npm run setup
-
-      # ── 手动数据库模式：把 secrets 写成 .env 供建表使用 ──
-      - name: Write .env from secrets (manual database mode)
-        if: ${{ github.event.inputs.setup != 'true' }}
-        env:
-          D1: ${{ secrets.DATABASE_URL }}
-          D2: ${{ secrets.DATABASE_URL_BACKUP }}
-          C1: ${{ secrets.DATABASE_URL_CACHE_1 }}
-          C2: ${{ secrets.DATABASE_URL_CACHE_2 }}
-          C3: ${{ secrets.DATABASE_URL_CACHE_3 }}
-        run: |
-          # 去掉面板粘贴可能带的空白与首尾引号
-          clean() { printf '%s' "$1" | sed -E "s/^[[:space:]]+|[[:space:]]+$//g; s/^[\"']+|[\"']+$//g"; }
-          {
-            echo "DATABASE_URL=$(clean "$D1")"
-            echo "DATABASE_URL_BACKUP=$(clean "$D2")"
-            echo "DATABASE_URL_CACHE_1=$(clean "$C1")"
-            echo "DATABASE_URL_CACHE_2=$(clean "$C2")"
-            echo "DATABASE_URL_CACHE_3=$(clean "$C3")"
-          } > .env
-          echo ".env 已生成（仅用于本次构建，不会提交）"
-          grep -c '=' .env
-
-      - name: Initialize database schema and seed data
-        if: ${{ github.event.inputs.setup != 'true' }}
-        run: |
-          npm run db:push
-          npm run db:seed
+      - name: Type check
+        run: npm run typecheck
 
       - name: Build frontend
-        if: ${{ github.event.inputs.build_frontend == 'true' }}
         run: npm run build
 
-      - name: Create R2 bucket if missing
-        run: npx wrangler r2 bucket create cloudreve-storage || echo "bucket already exists, continue"
+      - name: Verify build output
+        run: |
+          if [ ! -f public/index.html ]; then
+            echo "::error::前端构建产物缺失（public/index.html 不存在）"
+            exit 1
+          fi
+          echo "✔ 前端构建产物正常（$(ls public | wc -l) 个文件）"
 
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+      - name: Verify wrangler config
+        run: npx wrangler deploy --dry-run
 
-      # ── 把变量写入 Worker secret（值来自 .env 或环境变量）──
+      # ── 资源初始化（手动触发时才执行）──
+      - name: Setup resources
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.setup == 'true' && env.CLOUDFLARE_API_TOKEN != '' }}
+        run: npm run setup
+
       - name: Apply Worker secrets
-        if: ${{ github.event.inputs.apply_secrets == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.setup == 'true' && env.CLOUDFLARE_API_TOKEN != '' }}
         run: npm run secrets:apply
 
-      # ── 把自动生成的 KV 配置提交回仓库，供后续部署使用 ──
+      # ── 把自动生成的 KV 配置提交回仓库，供 Workers Builds 部署使用 ──
       - name: Commit generated wrangler.toml
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.setup == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -145,13 +90,9 @@ jobs:
           fi
 
       - name: Summary
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.setup == 'true' }}
         run: |
-          echo "## 部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "## 初始化完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ github.event.inputs.worker_name }}" ]; then
-            echo "✅ Worker 已部署：\`${{ github.event.inputs.worker_name }}\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ Worker 已部署：\`cloudreve-v3-worker\`" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "下一步：在 Cloudflare 面板查看 Worker 地址，用初始化时打印的管理员账号登录后台。" >> $GITHUB_STEP_SUMMARY
+          echo "KV 命名空间与 Neon 数据库已创建并写入 wrangler.toml。" >> $GITHUB_STEP_SUMMARY
+          echo "接下来到 Cloudflare 面板 Workers & Pages 连接本仓库部署（见 DEPLOY.md）。" >> $GITHUB_STEP_SUMMARY
