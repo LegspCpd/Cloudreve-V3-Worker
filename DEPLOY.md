@@ -140,6 +140,8 @@ R2 存储桶同样由脚本自动创建/复用，无需手动执行。若想单�
 | `ADMIN_PASSWORD` | 可选 | 管理员密码 |
 | `MAX_KV_NAMESPACES` | 可选 | KV 数量上限 **5** |
 | `MAX_NEON_DATABASES` | 可选 | Neon 库数量上限 **5** |
+| `R2_BUCKET_NAME` | 可选 | R2 桶名，默认 `cloudreve-v3-storage` |
+| `SKIP_R2_CREATE` | 可选 | 设为 `1` 跳过 R2 创建（桶已存在时可用） |
 | `NODE_VERSION` | 建议 | `22`（wrangler 4 要求 Node ≥ 22） |
 
 数据库连接串由部署脚本自动生成并写入，**不需要手动填**：

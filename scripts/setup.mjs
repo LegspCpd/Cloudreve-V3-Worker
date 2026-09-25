@@ -290,7 +290,9 @@ function listR2Buckets() {
   }
 }
 
-if (listR2Buckets().has(R2_BUCKET_NAME)) {
+if (process.env.SKIP_R2_CREATE === "1") {
+  warn(`SKIP_R2_CREATE=1，跳过 R2 存储桶创建，请确认 ${R2_BUCKET_NAME} 已存在。`);
+} else if (listR2Buckets().has(R2_BUCKET_NAME)) {
   ok(`R2 存储桶${R2_BUCKET_NAME}复用已存在实例`);
 } else {
   try {
@@ -302,9 +304,11 @@ if (listR2Buckets().has(R2_BUCKET_NAME)) {
       ok(`R2 存储桶${R2_BUCKET_NAME}复用已存在实例`);
     } else {
       fail(`创建 R2 存储桶失败：${msg || e.message}`);
-      console.log(
-        "  → 若提示 R2 未启用，请先在 Cloudflare 面板 R2 Object Storage 处启用（一次性操作），然后重新部署。",
-      );
+      if (/auth|permission|10000|forbidden|not authorized/i.test(msg)) {
+        console.log("  → 当前 API Token 缺少 R2 权限，请在面板给 Build 的 Token 补上 R2 权限后重新部署。");
+      } else {
+        console.log("  → 若提示 R2 未启用，请先在 Cloudflare 面板 R2 Object Storage 处启用（一次性操作），然后重新部署。");
+      }
       process.exit(1);
     }
   }
