@@ -347,6 +347,26 @@ if (neonApiKey && neonProjectId) {
     "Neon-Api-Key": neonApiKey,
   });
 
+  // 列出该 API Key 可见的项目：NEON_PROJECT_ID 填错时能直接看到正确取值
+  async function listNeonProjects() {
+    try {
+      const resp = await fetch("https://console.neon.tech/api/v2/projects", { headers: neonHeaders() });
+      if (!resp.ok) return;
+      const body = await resp.json();
+      const list = (body.projects || []).map((p) => `${p.id}（${p.name}）`);
+      if (list.length) log(`  该 API Key 可见的项目：${list.join("、")}`);
+    } catch {
+      /* 拉取失败不影响主流程 */
+    }
+  }
+
+  // 面板里常把「组织 ID」当成项目 ID 填进来：org- 开头一定是组织，直接快速失败
+  if (neonProjectId.startsWith("org-")) {
+    fail(`NEON_PROJECT_ID 填的是组织 ID（${neonProjectId}），这里需要项目 ID（形如 xxx-xxx-12345678）。`);
+    await listNeonProjects();
+    process.exit(1);
+  }
+
   const BRANCH_NAMES = { main: "cloudreve-main", backup: "cloudreve-backup" };
 
   // 先把已存在的分支拉下来，能复用的直接复用，避免重复创建报错
@@ -423,6 +443,7 @@ if (neonApiKey && neonProjectId) {
     } catch (e) {
       fail(`创建 Neon 数据库 ${name} 失败：${String(e.message || e)}`);
       log("");
+      await listNeonProjects();
       warn("常见原因：");
       log("  1. NEON_API_KEY 已过期或权限不足（需要项目的读写权限）");
       log("  2. NEON_API_KEY / NEON_PROJECT_ID 填错或带了多余空白/引号");
