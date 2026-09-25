@@ -34,11 +34,12 @@ HASHID_SALT = ""
 SITE_URL = "https://your-worker.example.workers.dev"
 
 # ───────────────────────────────────────────────────────────
-# R2：作为「本地存储」策略的实际存储桶（单桶即可）
+# R2：作为「本地存储」策略的实际存储桶（由 scripts/setup.mjs 自动创建/复用）
+# 桶名统一带 cloudreve-v3 前缀，避免与 Cloudreve V4 等其他版本冲突
 # ───────────────────────────────────────────────────────────
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "cloudreve-storage"
+bucket_name = "cloudreve-v3-storage"
 
 # 观测
 [observability]

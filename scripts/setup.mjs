@@ -241,7 +241,78 @@ ok(`已更新 wrangler.toml（KV 命名空间 × ${createdKV.length}）`);
 log("");
 
 // ───────────────────────────────────────────────────────────
-// 第四步：自动创建 Neon 数据库（分支）
+// 第四步：自动创建 / 复用 R2 存储桶（「本地存储」策略用）
+// ───────────────────────────────────────────────────────────
+
+// 桶名统一带 cloudreve-v3 前缀，避免与 Cloudreve V4 等其他实例冲突
+const R2_BUCKET_NAME = (process.env.R2_BUCKET_NAME || "cloudreve-v3-storage").trim();
+
+// 拉取账号下已有桶名：优先 JSON，其次解析表格里的 name: 行
+function listR2Buckets() {
+  const names = new Set();
+  const attempts = [
+    ["r2", "bucket", "list", "--json"],
+    ["r2", "bucket", "list"],
+  ];
+  for (const args of attempts) {
+    try {
+      const out = wrangler(...args);
+      const s = out.indexOf("[");
+      const e = out.lastIndexOf("]");
+      if (s !== -1 && e > s) {
+        try {
+          for (const b of JSON.parse(out.slice(s, e + 1))) {
+            if (b && b.name) names.add(String(b.name));
+          }
+          if (names.size) return names;
+        } catch {
+          /* 不是 JSON，继续按表格解析 */
+        }
+      }
+      for (const m of out.matchAll(/^\s*name:\s*([^\s]+)/gm)) {
+        names.add(m[1].replace(/["']/g, ""));
+      }
+      if (names.size) return names;
+    } catch {
+      /* 该调用方式不可用，尝试下一种 */
+    }
+  }
+  return names;
+}
+
+// 让 wrangler.toml 里的桶名与本次使用的一致
+{
+  const text = readFileSync(wranglerPath, "utf8");
+  const re = /(^\[\[r2_buckets\]\][\s\S]*?bucket_name\s*=\s*)".*"/m;
+  if (re.test(text)) {
+    const next = text.replace(re, `$1"${R2_BUCKET_NAME}"`);
+    if (next !== text) writeFileSync(wranglerPath, next, "utf8");
+  }
+}
+
+if (listR2Buckets().has(R2_BUCKET_NAME)) {
+  ok(`R2 存储桶${R2_BUCKET_NAME}复用已存在实例`);
+} else {
+  try {
+    wrangler("r2", "bucket", "create", R2_BUCKET_NAME);
+    ok(`R2 存储桶创建成功：${R2_BUCKET_NAME}`);
+  } catch (e) {
+    const msg = String(e.stdout || e.stderr || e.message || "").trim();
+    if (/already exists|10004|conflict/i.test(msg)) {
+      ok(`R2 存储桶${R2_BUCKET_NAME}复用已存在实例`);
+    } else {
+      fail(`创建 R2 存储桶失败：${msg || e.message}`);
+      console.log(
+        "  → 若提示 R2 未启用，请先在 Cloudflare 面板 R2 Object Storage 处启用（一次性操作），然后重新部署。",
+      );
+      process.exit(1);
+    }
+  }
+}
+log("");
+
+// ───────────────────────────────────────────────────────────
+// 第五步：自动创建 Neon 数据库（分支）
 // ───────────────────────────────────────────────────────────
 
 const neonApiKey = process.env.NEON_API_KEY || "";

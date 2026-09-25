@@ -63,21 +63,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 5. 点 **Save and Deploy**
 
-### 第 4 步：创建 R2 存储桶
-
-「本地存储」策略需要一个 R2 存储桶：
-
-[Cloudflare 面板](https://dash.cloudflare.com) → **R2 Object Storage** → **Create bucket** → 名称填 `cloudreve-storage`
-
-> 名称必须与 `wrangler.toml` 中 `[[r2_buckets]]` 的 `bucket_name` 一致。
-
-### 第 5 步：验证
+### 第 4 步：验证
 
 部署完成后，面板给出 Worker 地址。浏览器打开，用管理员账号登录。
 
 管理员账号密码在部署日志里：**Workers & Pages → 你的项目 → Deployments → 最新一次的日志**，找到 `db:seed` 步骤的输出。
 
 之后**每次 push 到 main 分支，面板自动重新构建部署**，无需任何操作。
+
+> **R2 存储桶无需手动创建**：部署脚本会自动创建 `cloudreve-v3-storage` 并复用已存在的同名桶。
+> 唯一的例外：若你的账号从未启用过 R2，请先在面板 **R2 Object Storage** 处点一下启用（一次性操作），再重新部署。
 
 ---
 
@@ -124,11 +119,8 @@ npx wrangler deploy  # 只部署
 npm run dev          # 本地调试（http://localhost:8787）
 ```
 
-首次部署前创建 R2 存储桶：
-
-```bash
-npx wrangler r2 bucket create cloudreve-storage
-```
+R2 存储桶同样由脚本自动创建/复用，无需手动执行。若想单独建，可用
+`npx wrangler r2 bucket create cloudreve-v3-storage`，或设置环境变量 `R2_BUCKET_NAME` 自定义桶名（建议保留 `cloudreve-v3` 前缀）。
 
 ---
 

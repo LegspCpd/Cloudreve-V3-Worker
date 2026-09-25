@@ -60,9 +60,10 @@
 
 5. 点 **Save and Deploy**，等 3~5 分钟
 
-6. 创建 R2 存储桶（「本地存储」策略用）：面板 → **R2 Object Storage** → **Create bucket** → 名称填 `cloudreve-storage`
+6. 完成。管理员账号密码在部署日志的 `db:seed` 步骤里
 
-7. 完成。管理员账号密码在部署日志的 `db:seed` 步骤里
+> KV 命名空间与 R2 存储桶都由部署脚本自动创建，已存在的自动复用，无需手工操作。
+> 唯一需要一次性手动启用的：若账号从未用过 R2，请先在面板 **R2 Object Storage** 处点一下启用。
 
 > 随机串可用在线工具生成，或任意能跑 node 的地方执行：
 > `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
@@ -72,16 +73,17 @@
 ```
 npm run deploy
   ├─ 1. 创建/复用 5 个 KV 命名空间（Cloudreve-v3-cache/session/upload/task/lock）
-  ├─ 2. 创建/复用 5 个 Neon 数据库（1 主库 + 3 缓存库 + 1 备份库）
-  ├─ 3. 全库建表
-  ├─ 4. 种子数据（系统设置 / 用户组 / 存储策略 / 管理员账号）
-  ├─ 5. 连接串回填 wrangler.toml
-  ├─ 6. 构建前端
-  ├─ 7. 写入 Worker secret
-  └─ 8. wrangler deploy 部署
+  ├─ 2. 创建/复用 R2 存储桶（cloudreve-v3-storage，「本地存储」策略用）
+  ├─ 3. 创建/复用 5 个 Neon 数据库（1 主库 + 3 缓存库 + 1 备份库）
+  ├─ 4. 全库建表
+  ├─ 5. 种子数据（系统设置 / 用户组 / 存储策略 / 管理员账号）
+  ├─ 6. 连接串回填 wrangler.toml
+  ├─ 7. 构建前端
+  ├─ 8. 写入 Worker secret
+  └─ 9. wrangler deploy 部署
 ```
 
-全部步骤**可断点续跑**：已创建的 KV 与数据库会自动复用，不会重复创建，失败后重跑无副作用。
+全部步骤**可断点续跑**：已创建的 KV、R2 桶与数据库都会自动复用，不会重复创建，失败后重跑无副作用。
 
 > GitHub Actions 只做构建检查（类型检查 + 前端构建 + wrangler 配置校验），不部署、不建任何资源。
 
