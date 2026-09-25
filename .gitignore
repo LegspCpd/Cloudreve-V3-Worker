@@ -11,7 +11,7 @@ frontend/node_modules/
 # 构建产物（前端构建后复制到 public/，不提交仓库）
 # ─────────────────────────────────────
 dist/
-public/
+/public/
 frontend/build/
 frontend/dist/
 *.tsbuildinfo
