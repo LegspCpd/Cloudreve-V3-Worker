@@ -387,13 +387,40 @@ if (neonApiKey && neonProjectId) {
     /* 拉取失败不阻塞，后面创建时会再报错 */
   }
 
-  // 取指定分支的连接串。
-  // 新版 Neon API 的 branches / endpoints 响应里不再直接返回 connection_uris，
-  // 必须先取库名与角色名，再调用专用接口换取连接串。
+  // 确保分支上有 read_write 端点。
+  // Neon 新建分支默认「不创建 compute endpoint」，而没有端点就拿不到连接串
+  // （connection_uri 依赖分支上的读写端点）。
+  async function ensureEndpoint(branchId) {
+    if (!branchId) return "";
+    const base = `https://console.neon.tech/api/v2/projects/${neonProjectId}`;
+    try {
+      const eps = await (await fetch(`${base}/branches/${branchId}/endpoints`, { headers: neonHeaders() })).json();
+      const existing = (eps.endpoints || []).find((e) => e.type === "read_write");
+      if (existing && existing.id) return existing.id;
+    } catch {
+      /* 查询失败时继续尝试创建 */
+    }
+    try {
+      const resp = await fetch(`${base}/endpoints`, {
+        method: "POST",
+        headers: neonHeaders(),
+        body: JSON.stringify({ endpoint: { branch_id: branchId, type: "read_write" } }),
+      });
+      const body = await resp.json();
+      if (resp.ok && body.endpoint && body.endpoint.id) return body.endpoint.id;
+    } catch {
+      /* 交给上层报错 */
+    }
+    return "";
+  }
+
+  // 取指定分支的连接串：先确保有读写端点，再按库名/角色名换取连接串
   async function connectionUriOf(branchId) {
     if (!branchId) return "";
     const base = `https://console.neon.tech/api/v2/projects/${neonProjectId}`;
     try {
+      const endpointId = await ensureEndpoint(branchId);
+      if (!endpointId) return "";
       const dbs = await (await fetch(`${base}/branches/${branchId}/databases`, { headers: neonHeaders() })).json();
       const db = (dbs.databases || [])[0];
       const databaseName = db && db.name ? db.name : "neondb";
@@ -405,7 +432,7 @@ if (neonApiKey && neonProjectId) {
       }
       if (!roleName) return "";
       const resp = await fetch(
-        `${base}/connection_uri?branch_id=${branchId}&database_name=${encodeURIComponent(databaseName)}&role_name=${encodeURIComponent(roleName)}`,
+        `${base}/connection_uri?branch_id=${branchId}&endpoint_id=${endpointId}&database_name=${encodeURIComponent(databaseName)}&role_name=${encodeURIComponent(roleName)}`,
         { headers: neonHeaders() },
       );
       if (!resp.ok) return "";
@@ -439,7 +466,8 @@ if (neonApiKey && neonProjectId) {
       const resp = await fetch(`https://console.neon.tech/api/v2/projects/${neonProjectId}/branches`, {
         method: "POST",
         headers: neonHeaders(),
-        body: JSON.stringify({ branch: { name } }),
+        // 同时请求 read_write 端点：Neon 默认不建端点，没有端点就取不到连接串
+        body: JSON.stringify({ branch: { name }, endpoints: [{ type: "read_write" }] }),
       });
       const body = await resp.json();
       if (!resp.ok) {
