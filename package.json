@@ -27,7 +27,7 @@
     "resend": "^4.1.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
+    "@cloudflare/workers-types": "^5.20260923.1",
     "@types/node": "^22.10.2",
     "cpy-cli": "^5.0.0",
     "drizzle-kit": "^0.30.1",
