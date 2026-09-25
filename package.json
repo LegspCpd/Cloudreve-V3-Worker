@@ -15,7 +15,7 @@
     "db:reset": "node scripts/db-push.mjs --reset && node scripts/db-seed.mjs",
     "secrets:apply": "node scripts/apply-secrets.mjs",
     "frontend:install": "cd frontend && npm install --legacy-peer-deps",
-    "frontend:build": "cd frontend && npm run build && rimraf ../public && cpy \"build/*\" ../public",
+    "frontend:build": "npm run frontend:install && cd frontend && npm run build && rimraf ../public && cpy \"build/*\" ../public",
     "build": "npm run frontend:build",
     "tail": "wrangler tail"
   },
