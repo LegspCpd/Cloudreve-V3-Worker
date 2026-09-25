@@ -92,8 +92,8 @@ site.get("/config", csrfInit, async (c) => {
   );
 });
 
-// manifest.json
-site.get("/manifest.json", async (c) => {
+// manifest.json（根路径 /manifest.json 与 /api/v3/site/manifest.json 共用）
+export async function buildManifest() {
   const values = await setting.getMany([
     "siteName",
     "siteTitle",
@@ -104,7 +104,7 @@ site.get("/manifest.json", async (c) => {
     "pwa_theme_color",
     "pwa_background_color",
   ]);
-  return c.json({
+  return {
     short_name: values["siteName"] ?? "",
     name: values["siteTitle"] ?? "",
     icons: [
@@ -116,8 +116,10 @@ site.get("/manifest.json", async (c) => {
     display: values["pwa_display"] ?? "standalone",
     theme_color: values["pwa_theme_color"] ?? "#000000",
     background_color: values["pwa_background_color"] ?? "#ffffff",
-  });
-});
+  };
+}
+
+site.get("/manifest.json", async (c) => c.json(await buildManifest()));
 
 // VOL 密钥
 site.get("/vol", async (c) => {

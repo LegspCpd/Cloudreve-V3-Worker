@@ -39,11 +39,14 @@ jobs:
 
       - name: Verify build output
         run: |
-          if [ ! -f public/index.html ]; then
-            echo "::error::前端构建产物缺失（public/index.html 不存在）"
-            exit 1
-          fi
-          echo "✔ 前端构建产物正常（$(ls public | wc -l) 个文件）"
+          # public/ 必须包含静态资源目录，否则线上 /static/*、/locales/* 会全部 404
+          for p in public/index.html public/asset-manifest.json public/static/js public/locales; do
+            if [ ! -e "$p" ]; then
+              echo "::error::前端构建产物缺失：$p"
+              exit 1
+            fi
+          done
+          echo "✔ 前端构建产物正常（$(find public -type f | wc -l) 个文件）"
 
       - name: Verify wrangler config
         run: npx wrangler deploy --dry-run

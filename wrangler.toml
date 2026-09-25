@@ -4,11 +4,19 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-# 前端静态资源（原版 React 构建产物）。Worker 优先处理静态文件，
-# 未命中的请求（/api/... 及前端路由）交给 Worker 处理；前端路由回退到 index.html。
+# 前端静态资源（原版 React 构建产物）。
+#   binding = "ASSETS"：Worker 通过 env.ASSETS 读取静态文件；
+#   run_worker_first = true：所有请求先经过 Worker，再由 Worker 决定
+#     - /api/v3/*、/dav/*    → 后端路由
+#     - /static/*、/locales/* → env.ASSETS 直接返回
+#     - 其余（/、/login 等）  → 返回替换过站点设置的 index.html
+#   必须让 index.html 经过 Worker，否则 siteName / siteDes / pwa_small_icon 等
+#   占位符无法替换（原版由 Gin 中间件 middleware/frontend.go 完成替换）。
 [assets]
 directory = "./public"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = true
 
 # ───────────────────────────────────────────────────────────
 # 运行时变量（非敏感的默认值；敏感信息请用 wrangler secret put 设置）
