@@ -57,7 +57,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    | `SITE_URL` | ✅ | 站点地址，如 `https://cloudreve-v3.xxx.workers.dev` |
    | `ADMIN_EMAIL` | 可选 | 管理员邮箱，默认 `admin@cloudreve.org` |
    | `ADMIN_PASSWORD` | 可选 | 管理员密码，不填自动生成并打印在日志里 |
-   | `NODE_OPTIONS` | ✅ | `--openssl-legacy-provider`（旧版 CRA 在 Node 17+ 必需） |
+   | `NODE_VERSION` | 建议 | `22`（wrangler 4 要求 Node ≥ 22） |
+
+   > 旧版 CRA 在 Node 17+ 构建所需的 `--openssl-legacy-provider` 已内置在构建脚本里，不需要你再添加 `NODE_OPTIONS`。
 
 5. 点 **Save and Deploy**
 
@@ -146,7 +148,7 @@ npx wrangler r2 bucket create cloudreve-storage
 | `ADMIN_PASSWORD` | 可选 | 管理员密码 |
 | `MAX_KV_NAMESPACES` | 可选 | KV 数量上限 **5** |
 | `MAX_NEON_DATABASES` | 可选 | Neon 库数量上限 **5** |
-| `NODE_OPTIONS` | ✅ | `--openssl-legacy-provider` |
+| `NODE_VERSION` | 建议 | `22`（wrangler 4 要求 Node ≥ 22） |
 
 数据库连接串由部署脚本自动生成并写入，**不需要手动填**：
 
@@ -231,7 +233,10 @@ npm run tail          # 实时日志
 A: 检查 `NEON_API_KEY` 是否有效、`NEON_PROJECT_ID` 是否属于同一账号。重新生成 Key 后在 Workers Builds 的环境变量里更新，然后重新部署。
 
 **Q: 前端构建报 OpenSSL 错误？**
-A: 环境变量里加 `NODE_OPTIONS` = `--openssl-legacy-provider`。
+A: 构建脚本已内置 `--openssl-legacy-provider`，正常无需处理。若仍报错，说明构建镜像的 Node 版本过旧或过新，把 `NODE_VERSION` 设为 `22` 后重新部署。
+
+**Q: 部署报 wrangler 要求 Node ≥ 22？**
+A: 在 Workers Builds 的环境变量里加 `NODE_VERSION` = `22`，重新部署。
 
 **Q: 部署报「超过上限 5 个，请减少一个」？**
 A: 预期行为。把 `MAX_KV_NAMESPACES` / `MAX_NEON_DATABASES` 改小（≤5）后重新部署。

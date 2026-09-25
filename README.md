@@ -54,7 +54,9 @@
    | `SITE_URL` | ✅ | 站点地址，如 `https://cloudreve-v3.xxx.workers.dev` |
    | `ADMIN_EMAIL` | 可选 | 管理员邮箱，默认 `admin@cloudreve.org` |
    | `ADMIN_PASSWORD` | 可选 | 管理员密码，不填自动生成 |
-   | `NODE_OPTIONS` | ✅ | `--openssl-legacy-provider`（旧版 CRA 必需） |
+   | `NODE_VERSION` | 建议 | `22`（wrangler 4 要求 Node ≥ 22；构建镜像默认通常已满足） |
+
+   > `--openssl-legacy-provider`（旧版 CRA 在 Node 17+ 构建时需要）已内置在构建脚本中，无需再手工添加 `NODE_OPTIONS`。
 
 5. 点 **Save and Deploy**，等 3~5 分钟
 
