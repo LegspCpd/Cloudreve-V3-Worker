@@ -144,7 +144,7 @@ export default function MagicVar({ isFile, open, onClose, isSlave }) {
                             {magicVars.map((m) => {
                                 if (!m.fileOnly || isFile) {
                                     return (
-                                        <TableRow>
+                                        <TableRow key={m.value}>
                                             <TableCell
                                                 component="th"
                                                 scope="row"

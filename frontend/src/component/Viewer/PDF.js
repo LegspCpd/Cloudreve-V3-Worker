@@ -101,7 +101,7 @@ export default function PDFViewer() {
                 }
             >
                 {Array.from(new Array(pageNumber), (el, index) => (
-                    <Paper className={classes.paper} elevation={1}>
+                    <Paper key={`page_${index + 1}`} className={classes.paper} elevation={1}>
                         <Page
                             width={900}
                             onLoadSuccess={removeTextLayerOffset}

@@ -176,6 +176,7 @@ export default function Node() {
             if (node[feature.field]) {
                 return (
                     <Chip
+                        key={feature.field}
                         className={classes.disabledBadge}
                         size="small"
                         color="primary"

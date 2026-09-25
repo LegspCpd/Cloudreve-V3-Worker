@@ -139,7 +139,7 @@ export default function AddGroup({ open, onClose, onSubmit, groupEdit }) {
                                     {groups.map((v) => {
                                         if (v.ID !== 3) {
                                             return (
-                                                <MenuItem value={v.ID}>
+                                                <MenuItem value={v.ID} key={v.ID}>
                                                     {v.Name}
                                                 </MenuItem>
                                             );

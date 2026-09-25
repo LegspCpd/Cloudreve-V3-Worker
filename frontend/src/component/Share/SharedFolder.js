@@ -115,7 +115,13 @@ class SharedFolderComponent extends Component {
                         !readmeShowed
                     ) {
                         readmeShowed = true;
-                        return <ReadMe share={this.props.share} file={value} />;
+                        return (
+                            <ReadMe
+                                key={value.name}
+                                share={this.props.share}
+                                file={value}
+                            />
+                        );
                     }
                 })}
                 <Popover
