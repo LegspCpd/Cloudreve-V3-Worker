@@ -387,17 +387,33 @@ if (neonApiKey && neonProjectId) {
     /* 拉取失败不阻塞，后面创建时会再报错 */
   }
 
-  // 取指定分支的连接串（复用场景）
+  // 取指定分支的连接串。
+  // 新版 Neon API 的 branches / endpoints 响应里不再直接返回 connection_uris，
+  // 必须先取库名与角色名，再调用专用接口换取连接串。
   async function connectionUriOf(branchId) {
-    const endpoints = await (
-      await fetch(
-        `https://console.neon.tech/api/v2/projects/${neonProjectId}/branches/${branchId}/endpoints`,
+    if (!branchId) return "";
+    const base = `https://console.neon.tech/api/v2/projects/${neonProjectId}`;
+    try {
+      const dbs = await (await fetch(`${base}/branches/${branchId}/databases`, { headers: neonHeaders() })).json();
+      const db = (dbs.databases || [])[0];
+      const databaseName = db && db.name ? db.name : "neondb";
+      let roleName = db && db.owner_name ? db.owner_name : "";
+      if (!roleName) {
+        const roles = await (await fetch(`${base}/branches/${branchId}/roles`, { headers: neonHeaders() })).json();
+        const role = (roles.roles || [])[0];
+        roleName = role && role.name ? role.name : "";
+      }
+      if (!roleName) return "";
+      const resp = await fetch(
+        `${base}/connection_uri?branch_id=${branchId}&database_name=${encodeURIComponent(databaseName)}&role_name=${encodeURIComponent(roleName)}`,
         { headers: neonHeaders() },
-      )
-    ).json();
-    const ep = (endpoints.endpoints || [])[0];
-    if (!ep || !ep.connection_uris || !ep.connection_uris.length) return "";
-    return ep.connection_uris[0].connection_uri;
+      );
+      if (!resp.ok) return "";
+      const body = await resp.json();
+      return body.uri || "";
+    } catch {
+      return "";
+    }
   }
 
   for (let i = 0; i < dbCount; i++) {
@@ -436,9 +452,11 @@ if (neonApiKey && neonProjectId) {
         }
         throw new Error(body && body.message ? body.message : `HTTP ${resp.status}`);
       }
-      const uris = body.connection_uris || [];
-      if (!uris.length) throw new Error("创建成功但响应中没有连接串");
-      dbUrls[role] = uris[0].connection_uri;
+      const createdBranchId = (body.branch && body.branch.id) || "";
+      const uri = await connectionUriOf(createdBranchId);
+      if (!uri) throw new Error(`分支 ${name} 已创建，但无法获取连接串`);
+      dbUrls[role] = uri;
+      existingBranches.set(name, createdBranchId);
       ok(`Neon 数据库 ${name}（${role}）创建成功`);
     } catch (e) {
       fail(`创建 Neon 数据库 ${name} 失败：${String(e.message || e)}`);

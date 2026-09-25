@@ -4,6 +4,11 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
+# 关键：wrangler 默认把本文件当成唯一事实来源，部署时会覆盖/删除你在面板里设置的
+# 变量（含 Neon 连接串等）。开启后，配置里没有声明的变量与密钥都会原样保留，
+# 面板上设置的变量不再被部署清空。因此 [vars] 里也不放任何占位空串。
+keep_vars = true
+
 # 前端静态资源（原版 React 构建产物）。
 #   binding = "ASSETS"：Worker 通过 env.ASSETS 读取静态文件；
 #   run_worker_first = true：所有请求先经过 Worker，再由 Worker 决定
@@ -19,27 +24,17 @@ not_found_handling = "single-page-application"
 run_worker_first = true
 
 # ───────────────────────────────────────────────────────────
-# 运行时变量（非敏感的默认值；敏感信息请用 wrangler secret put 设置）
+# 运行时变量：只放与用户配置无关的默认值。
+# 数据库连接串、RESEND_API_KEY、SESSION_SECRET、HASHID_SALT、SITE_URL、
+# MAIL_FROM_* 一律不在此声明（声明了就会覆盖面板上的值，即使是空串）：
+#   - 连接串：构建时由 scripts/setup.mjs + deploy.mjs 自动注入
+#   - 其余密钥：由 scripts/apply-secrets.mjs 用 wrangler secret put 写入
+# keep_vars = true 会保留面板上设置的其它变量与密钥。
 # ───────────────────────────────────────────────────────────
 [vars]
 ENVIRONMENT = "production"
-# 数据库连接串与上限：由 scripts/setup.mjs 自动写入 .dev.vars / secret，请勿在此填写
 MAX_KV_NAMESPACES = "5"
 MAX_NEON_DATABASES = "5"
-DATABASE_URL = ""
-DATABASE_URL_BACKUP = ""
-DATABASE_URL_CACHE_1 = ""
-DATABASE_URL_CACHE_2 = ""
-DATABASE_URL_CACHE_3 = ""
-# Resend 邮件（secret：wrangler secret put RESEND_API_KEY）
-RESEND_API_KEY = ""
-MAIL_FROM_ADDRESS = "no-reply@example.com"
-MAIL_FROM_NAME = "CloudrevePlus"
-# 会话签名密钥与 HashID 盐值（secret）
-SESSION_SECRET = ""
-HASHID_SALT = ""
-# 站点对外地址（末尾不要带斜杠）
-SITE_URL = "https://your-worker.example.workers.dev"
 
 # ───────────────────────────────────────────────────────────
 # R2：作为「本地存储」策略的实际存储桶（由 scripts/setup.mjs 自动创建/复用）

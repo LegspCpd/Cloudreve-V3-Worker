@@ -67,26 +67,37 @@ function loadDotEnv() {
   }
 }
 
-// 把 setup 生成的连接串回填到 wrangler.toml 的 [vars]
+// 把 setup 生成的连接串注入 wrangler.toml 的 [vars]
+// 仓库里不再声明这些键（声明了就会覆盖你在面板上设置的同名变量），
+// 统一由构建时注入，且只在拿到真实值时才写。
 function applyDbUrlsToWrangler() {
   loadDotEnv();
   let text = readFileSync(WRANGLER_TOML, "utf8");
   const keys = ["DATABASE_URL", "DATABASE_URL_BACKUP", "DATABASE_URL_CACHE_1", "DATABASE_URL_CACHE_2", "DATABASE_URL_CACHE_3"];
+  const missing = [];
   let changed = 0;
   for (const key of keys) {
     const value = process.env[key];
     if (!value) continue;
     const re = new RegExp(`^${key}\\s*=\\s*".*"`, "m");
     if (re.test(text)) {
-      text = text.replace(re, `${key} = "${value}"`);
+      // 用函数替换，避免连接串里的 $ 被当成替换占位符
+      text = text.replace(re, () => `${key} = "${value}"`);
       changed++;
+    } else {
+      missing.push(`${key} = "${value}"`);
     }
+  }
+  // 缺失的键插入到 [vars] 段首，保证仍在 [vars] 作用域内
+  if (missing.length > 0 && /^\[vars\]$/m.test(text)) {
+    text = text.replace(/^\[vars\]$/m, () => `[vars]\n${missing.join("\n")}`);
+    changed += missing.length;
   }
   if (changed > 0) {
     writeFileSync(WRANGLER_TOML, text, "utf8");
-    ok(`已把 ${changed} 个数据库连接串写入 wrangler.toml`);
+    ok(`已把 ${changed} 个数据库连接串注入 wrangler.toml 的 [vars]`);
   } else {
-    warn("未检测到数据库连接串，wrangler.toml 保持不变");
+    warn("未检测到数据库连接串，wrangler.toml 保持不变（面板上已有的变量不受影响）");
   }
 }
 

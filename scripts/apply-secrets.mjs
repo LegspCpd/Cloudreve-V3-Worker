@@ -24,21 +24,17 @@ const info = (m) => console.log(`${COLORS.cyan}ℹ${COLORS.reset} ${m}`);
 const warn = (m) => console.log(`${COLORS.yellow}⚠${COLORS.reset} ${m}`);
 const fail = (m) => console.log(`${COLORS.red}✘${COLORS.reset} ${m}`);
 
-// 需要写入 Worker secret 的键
+// 需要写入 Worker secret 的键。
+// 注意：DATABASE_URL* 不在这里 —— 它们由 deploy.mjs 在构建时注入 wrangler.toml 的 [vars]，
+// MAX_KV_NAMESPACES / MAX_NEON_DATABASES 已在 wrangler.toml [vars] 声明；
+// 同名同时作为 var 与 secret 会造成绑定冲突。
 const SECRET_KEYS = [
-  "DATABASE_URL",
-  "DATABASE_URL_BACKUP",
-  "DATABASE_URL_CACHE_1",
-  "DATABASE_URL_CACHE_2",
-  "DATABASE_URL_CACHE_3",
   "RESEND_API_KEY",
   "SESSION_SECRET",
   "HASHID_SALT",
   "MAIL_FROM_ADDRESS",
   "MAIL_FROM_NAME",
   "SITE_URL",
-  "MAX_KV_NAMESPACES",
-  "MAX_NEON_DATABASES",
 ];
 
 // 读取 .env（不覆盖已有环境变量）
