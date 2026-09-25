@@ -134,6 +134,8 @@ function wrangler(...args) {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    // Windows 下 .cmd 必须通过 shell 启动，否则 execFileSync 报 EINVAL
+    shell: process.platform === "win32",
   });
 }
 
@@ -319,8 +321,11 @@ log("");
 // 第五步：自动创建 Neon 数据库（分支）
 // ───────────────────────────────────────────────────────────
 
-const neonApiKey = process.env.NEON_API_KEY || "";
-const neonProjectId = process.env.NEON_PROJECT_ID || "";
+// GitHub 面板粘贴的 secret 经常带前后空白或换行，统一清理
+const trimS = (v) => (typeof v === "string" ? v.trim().replace(/^["'`]|["'`]$/g, "").trim() : v);
+
+const neonApiKey = trimS(process.env.NEON_API_KEY || "");
+const neonProjectId = trimS(process.env.NEON_PROJECT_ID || "");
 const envUrls = {};
 if (process.env.DATABASE_URL) envUrls.main = process.env.DATABASE_URL;
 if (process.env.DATABASE_URL_BACKUP) envUrls.backup = process.env.DATABASE_URL_BACKUP;
@@ -330,11 +335,6 @@ for (let i = 1; i <= 3; i++) {
 
 const dbUrls = {}; // role -> connection string
 const secretsToSet = []; // 待设置的 Worker secret
-
-// GitHub 面板粘贴的 secret 经常带前后空白或换行，统一清理
-const trimS = (v) => (typeof v === "string" ? v.trim().replace(/^["'`]|["'`]$/g, "").trim() : v);
-neonApiKey = trimS(neonApiKey);
-neonProjectId = trimS(neonProjectId);
 
 if (neonApiKey && neonProjectId) {
   info(`使用 Neon API 自动创建 ${dbCount} 个数据库（项目 ${neonProjectId}）…`);
