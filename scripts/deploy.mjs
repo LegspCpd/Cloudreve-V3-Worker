@@ -48,8 +48,28 @@ function run(cmd, args, label) {
   });
 }
 
-// 把 setup 生成的 .env 中的连接串回填到 wrangler.toml 的 [vars]
+// 加载 setup 生成的 .env（子进程写入，父进程需要自己读）
+function loadDotEnv() {
+  const dotEnvPath = resolve(ROOT, ".env");
+  try {
+    const text = readFileSync(dotEnvPath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const idx = t.indexOf("=");
+      if (idx < 0) continue;
+      const key = t.slice(0, idx).trim();
+      const val = t.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
+      if (key && val && !process.env[key]) process.env[key] = val;
+    }
+  } catch {
+    /* .env 不存在时忽略 */
+  }
+}
+
+// 把 setup 生成的连接串回填到 wrangler.toml 的 [vars]
 function applyDbUrlsToWrangler() {
+  loadDotEnv();
   let text = readFileSync(WRANGLER_TOML, "utf8");
   const keys = ["DATABASE_URL", "DATABASE_URL_BACKUP", "DATABASE_URL_CACHE_1", "DATABASE_URL_CACHE_2", "DATABASE_URL_CACHE_3"];
   let changed = 0;
@@ -65,6 +85,8 @@ function applyDbUrlsToWrangler() {
   if (changed > 0) {
     writeFileSync(WRANGLER_TOML, text, "utf8");
     ok(`已把 ${changed} 个数据库连接串写入 wrangler.toml`);
+  } else {
+    warn("未检测到数据库连接串，wrangler.toml 保持不变");
   }
 }
 
